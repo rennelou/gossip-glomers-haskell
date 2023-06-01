@@ -131,4 +131,9 @@ test-suite gossip-glomers-haskell-test
         base ^>=4.16.3.0,
         bytestring,
         aeson,
+        HTF,
         gossip-glomers-haskell
+
+    other-modules: ParseMessage
+
+    Build-tool-depends: HTF:htfpp

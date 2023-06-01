@@ -8,13 +8,13 @@ data Message = Message {
     src  :: Text,
     dest :: Text,
     body :: Body
-} deriving (Generic, Show)
+} deriving (Generic, Show, Eq)
 
 data Body = Body {
     type_text   :: Text,
     msg_id      :: Maybe Integer,
     in_reply_to :: Maybe Integer
-} deriving (Generic, Show)
+} deriving (Generic, Show, Eq)
 
 instance FromJSON MyLib.Body
 instance ToJSON MyLib.Body
