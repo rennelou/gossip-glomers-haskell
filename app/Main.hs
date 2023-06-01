@@ -9,7 +9,10 @@ import Control.Monad
 main :: IO ()
 main = forever $ do
   line <- getLine
-  putStrLn . show $ (fmap MyLib.handler $ decodeRawMessage line)
+  (putStrLn . show . MyLib.handler . tryDecodeMessage) line
 
-decodeRawMessage :: String -> Maybe MyLib.Message
-decodeRawMessage = decode . TL.encodeUtf8 .TL.pack
+tryDecodeMessage :: String -> MyLib.Message
+tryDecodeMessage s =
+  case (eitherDecode  . TL.encodeUtf8 .TL.pack) s
+  of Left e        -> error e
+     Right message -> message

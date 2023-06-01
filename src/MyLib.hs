@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 module MyLib (Message(..), Body(..), handler) where
 
 import Data.Text
@@ -10,17 +11,18 @@ data Message = Message {
     body :: Body
 } deriving (Generic, Show, Eq)
 
-data Body = Body {
-    type_text   :: Text,
-    msg_id      :: Maybe Integer,
-    in_reply_to :: Maybe Integer
-} deriving (Generic, Show, Eq)
+data Body =
+    Init    { msg_id :: Int, node_id :: Text, node_ids :: [Text] }
+  | Init_Ok { in_reply_to :: Int }
+  | Echo    { msg_id :: Int, echo :: Text }
+  | Echo_Ok { msg_id :: Int, in_reply_to :: Int, echo :: Text }
+  deriving (Generic, Show, Eq)
 
-instance FromJSON MyLib.Body
-instance ToJSON MyLib.Body
+instance FromJSON Body where
+instance ToJSON Body
 
-instance FromJSON MyLib.Message
-instance ToJSON MyLib.Message
+instance FromJSON Message
+instance ToJSON Message
 
 handler :: Message -> Message
 handler = id
