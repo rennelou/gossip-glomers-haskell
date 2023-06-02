@@ -1,5 +1,6 @@
 module Main where
 
+import System.IO (hPutStrLn, stderr)
 import qualified MyLib
 import qualified Data.Text.Lazy          as TL
 import qualified Data.Text.Lazy.Encoding as TL
@@ -9,10 +10,14 @@ import Control.Monad
 main :: IO ()
 main = forever $ do
   line <- getLine
-  (putStrLn . show . MyLib.handler . tryDecodeMessage) line
+  hPutStrLn stderr ("Received: " ++ line)
+  case (eitherDecode  . TL.encodeUtf8 .TL.pack) line of 
+    Left e        -> hPutStrLn stderr e
+    Right message ->
+      let response = (encodeMessage . MyLib.handler) message
+      in do 
+        hPutStrLn stderr ("Transmited: " ++ response)
+        putStrLn response
 
-tryDecodeMessage :: String -> MyLib.Message
-tryDecodeMessage s =
-  case (eitherDecode  . TL.encodeUtf8 .TL.pack) s
-  of Left e        -> error e
-     Right message -> message
+encodeMessage :: MyLib.Message -> String
+encodeMessage = TL.unpack . TL.decodeUtf8 . encode
