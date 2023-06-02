@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
-module MyLib (Message(..), Body(..), handler) where
+module GossipGlomers (Message(..), Body(..), handler) where
 
 import Data.Text
 import Data.Aeson

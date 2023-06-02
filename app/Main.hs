@@ -1,7 +1,7 @@
 module Main where
 
 import System.IO (hPutStrLn, stderr)
-import qualified MyLib
+import GossipGlomers
 import qualified Data.Text.Lazy          as TL
 import qualified Data.Text.Lazy.Encoding as TL
 import Data.Aeson
@@ -14,10 +14,10 @@ main = forever $ do
   case (eitherDecode  . TL.encodeUtf8 .TL.pack) line of 
     Left e        -> hPutStrLn stderr e
     Right message ->
-      let response = (encodeMessage . MyLib.handler) message
+      let response = (encodeMessage . handler) message
       in do 
         hPutStrLn stderr ("Transmited: " ++ response)
         putStrLn response
 
-encodeMessage :: MyLib.Message -> String
+encodeMessage :: Message -> String
 encodeMessage = TL.unpack . TL.decodeUtf8 . encode

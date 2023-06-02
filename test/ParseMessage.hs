@@ -3,7 +3,7 @@
 module ParseMessage (htf_thisModulesTests) where
 
 import Test.Framework
-import MyLib (Message(..), Body(..))
+import GossipGlomers (Message(..), Body(..))
 import Data.Aeson
 import qualified Data.ByteString.Lazy    as BL
 import qualified Data.Text.Lazy          as TL
