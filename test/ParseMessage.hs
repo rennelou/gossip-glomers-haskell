@@ -11,16 +11,21 @@ import qualified Data.Text.Lazy.Encoding as TL
 
 test_parseInit :: IO ()
 test_parseInit =
-  let message = "{\
-    \\"src\":\"c\"\
-    \,\"dest\":\"n1\"\
-    \,\"body\":{\
-    \  \"type\":\"init\"\
-    \ ,\"msg_id\":1\
-    \ ,\"node_id\":\"n3\"\
-    \ ,\"node_ids\":[\"n1\",\"n2\",\"n3\"]}\
-    \}"
-  in assertEqual message (strEncodeMessage $ strDecodeMessage message)
+  let jsonMessage = "{\
+        \\"src\":\"c1\"\
+        \,\"dest\":\"n1\"\
+        \,\"body\":{\
+        \  \"type\":\"init\"\
+        \ ,\"msg_id\":1\
+        \ ,\"node_id\":\"n3\"\
+        \ ,\"node_ids\":[\"n1\",\"n2\",\"n3\"]}\
+        \}"
+      message = Message {
+        src = "c1",
+        dest = "n1",
+        body = Init { msg_id = 1, node_id = "n3", node_ids = ["n1", "n2", "n3"]}
+      }
+  in assertEqual message (strDecodeMessage jsonMessage)
 
 test_parseInit_Ok :: IO ()
 test_parseInit_Ok =
