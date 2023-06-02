@@ -4,6 +4,7 @@ module MyLib (Message(..), Body(..), handler) where
 import Data.Text
 import Data.Aeson
 import GHC.Generics
+import qualified Data.Char as C
 
 data Message = Message {
     src  :: Text,
@@ -18,8 +19,18 @@ data Body =
   | Echo_Ok { msg_id :: Int, in_reply_to :: Int, echo :: Text }
   deriving (Generic, Show, Eq)
 
+bodyJSONOptions :: Options
+bodyJSONOptions = 
+  defaultOptions {
+     sumEncoding = TaggedObject { tagFieldName = "type", contentsFieldName = "contents" }
+    ,constructorTagModifier = fmap C.toLower
+  }
+
 instance FromJSON Body where
-instance ToJSON Body
+  parseJSON = genericParseJSON bodyJSONOptions
+
+instance ToJSON Body where
+  toJSON = genericToJSON bodyJSONOptions
 
 instance FromJSON Message
 instance ToJSON Message

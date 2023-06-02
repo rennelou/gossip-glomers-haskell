@@ -131,6 +131,7 @@ test-suite gossip-glomers-haskell-test
     -- Test dependencies.
     build-depends:
         base ^>=4.16.3.0,
+        text,
         bytestring,
         aeson,
         HTF,
