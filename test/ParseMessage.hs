@@ -3,7 +3,7 @@
 module ParseMessage (htf_thisModulesTests) where
 
 import Test.Framework
-import GossipGlomers (Message(..), Body(..))
+import MaelstromServer (Message(..), Body(..))
 import Data.Aeson
 import qualified Data.ByteString.Lazy    as BL
 import qualified Data.Text.Lazy          as TL

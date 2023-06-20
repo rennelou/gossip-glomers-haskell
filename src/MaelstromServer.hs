@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
-module GossipGlomers (Message(..), Body(..), handler) where
+module MaelstromServer (Message(..), Body(..), handler) where
 
 import Data.Text
 import Data.Aeson

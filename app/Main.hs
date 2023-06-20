@@ -1,7 +1,7 @@
 module Main where
 
 import System.IO (hPutStrLn, stderr)
-import GossipGlomers
+import MaelstromServer
 import qualified Data.Text.Lazy          as TL
 import qualified Data.Text.Lazy.Encoding as TL
 import Data.Aeson
