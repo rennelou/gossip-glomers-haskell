@@ -1,5 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
-module MaelstromServer (Message(..), Body(..), handler) where
+module MaelstromServer (Message(..), Body(..), NodeData(..)) where
+
+import State
 
 import Data.Text
 import Data.Aeson
@@ -35,5 +37,11 @@ instance ToJSON Body where
 instance FromJSON Message
 instance ToJSON Message
 
-handler :: Message -> Message
-handler = id
+data Context = NotInitialized | Initialized NodeData
+
+data NodeData = NodeData {
+  nodeId  :: Int,
+  nodeIds :: [Int]
+}
+
+

@@ -14,7 +14,7 @@ main = forever $ do
   case (eitherDecode  . TL.encodeUtf8 .TL.pack) line of 
     Left e        -> hPutStrLn stderr e
     Right message ->
-      let response = (encodeMessage . handler) message
+      let response = encodeMessage message
       in do 
         hPutStrLn stderr ("Transmited: " ++ response)
         putStrLn response
