@@ -2,17 +2,18 @@
 module MaelstromServer (
     Message(..)
   , Body(..)
-  , Context
   , NodeData(..)
-  , Action
-  , createHandler ) where
+  , runMaelstrom ) where
 
 import State
 
+import System.IO (hPutStrLn, stderr)
 import Data.Text
 import Data.Aeson
 import GHC.Generics
-import qualified Data.Char as C
+import qualified Data.Char               as C
+import qualified Data.Text.Lazy          as TL
+import qualified Data.Text.Lazy.Encoding as TL
 
 data Message = Message {
     src  :: Text,
@@ -50,6 +51,13 @@ data NodeData = NodeData {
   nodeIds :: [Int]
 }
 
+runMaelstrom :: (NodeData -> Message -> Message) -> IO ()
+runMaelstrom clientHandler =
+  let handler = createHandler clientHandler
+  in do
+    _ <- loop handler (NotInitialized)
+    return ()
+
 createHandler :: (NodeData -> Message -> Message) -> (Message -> Action Context Message)
 createHandler f =
   \ message -> 
@@ -57,3 +65,40 @@ createHandler f =
       case context of
         NotInitialized -> error "not initialized"
         Initialized nodeData -> State { state = context, content = f nodeData message } )
+
+loop :: (Message -> Action Context Message) -> Context -> IO (Context)
+loop handler context = 
+  do
+    line <- getLine
+    log' ("Received: " ++ line)
+    
+    case eitherDecodeMessage line of 
+      Left e -> 
+        do
+          log' e
+          loop handler context
+      Right message -> 
+        let State { 
+            state = newContext
+          , content = responseMessage 
+          } = run (handler message) context
+        in do
+          send responseMessage
+          loop handler newContext
+
+send :: Message -> IO ()
+send responseMessage =
+  do 
+    log' ("Transmited: " ++ response)
+    putStrLn response
+  where
+    response = encodeMessage responseMessage
+
+log' :: String -> IO ()
+log' str = hPutStrLn stderr str
+
+eitherDecodeMessage :: String -> Either String Message
+eitherDecodeMessage = eitherDecode  . TL.encodeUtf8 .TL.pack
+
+encodeMessage :: Message -> String
+encodeMessage = TL.unpack . TL.decodeUtf8 . encode
