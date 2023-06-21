@@ -9,7 +9,7 @@ import State
 
 import System.IO (hPutStrLn, stderr)
 import Data.Text
-import Data.Aeson
+import qualified Data.Aeson              as Json
 import GHC.Generics
 import qualified Data.Char               as C
 import qualified Data.Text.Lazy          as TL
@@ -24,25 +24,26 @@ data Message = Message {
 data Body =
     Init    { msg_id :: Int, node_id :: Text, node_ids :: [Text] }
   | Init_Ok { in_reply_to :: Int }
+  | Error   { in_reply_to :: Int, code :: Int, text :: Text }
   | Echo    { msg_id :: Int, echo :: Text }
   | Echo_Ok { msg_id :: Int, in_reply_to :: Int, echo :: Text }
   deriving (Generic, Show, Eq)
 
-bodyJSONOptions :: Options
+bodyJSONOptions :: Json.Options
 bodyJSONOptions = 
-  defaultOptions {
-     sumEncoding = TaggedObject { tagFieldName = "type", contentsFieldName = "contents" }
-    ,constructorTagModifier = fmap C.toLower
+  Json.defaultOptions {
+     Json.sumEncoding = Json.TaggedObject { Json.tagFieldName = "type", Json.contentsFieldName = "contents" }
+    ,Json.constructorTagModifier = fmap C.toLower
   }
 
-instance FromJSON Body where
-  parseJSON = genericParseJSON bodyJSONOptions
+instance Json.FromJSON Body where
+  parseJSON = Json.genericParseJSON bodyJSONOptions
 
-instance ToJSON Body where
-  toJSON = genericToJSON bodyJSONOptions
+instance Json.ToJSON Body where
+  toJSON = Json.genericToJSON bodyJSONOptions
 
-instance FromJSON Message
-instance ToJSON Message
+instance Json.FromJSON Message
+instance Json.ToJSON Message
 
 data Context = NotInitialized | Initialized NodeData
 
@@ -53,18 +54,11 @@ data NodeData = NodeData {
 
 runMaelstrom :: (NodeData -> Message -> Message) -> IO ()
 runMaelstrom clientHandler =
-  let handler = createHandler clientHandler
-  in do
+  do
     _ <- loop handler (NotInitialized)
     return ()
-
-createHandler :: (NodeData -> Message -> Message) -> (Message -> Action Context Message)
-createHandler f =
-  \ message -> 
-    Action (\ context ->
-      case context of
-        NotInitialized -> error "not initialized"
-        Initialized nodeData -> State { state = context, content = f nodeData message } )
+  where
+    handler = createHandler clientHandler
 
 loop :: (Message -> Action Context Message) -> Context -> IO (Context)
 loop handler context = 
@@ -86,11 +80,28 @@ loop handler context =
           send responseMessage
           loop handler newContext
 
+createHandler :: (NodeData -> Message -> Message) -> (Message -> Action Context Message)
+createHandler f = \ message -> 
+  Action (\ context ->
+    case context of
+      NotInitialized -> initialize message
+      Initialized nodeData -> State { state = context, content = f nodeData message }
+  )
+
+initialize :: Message -> State Context Message
+initialize message =
+  case body message of
+    Init    { msg_id = _msgId, node_id = _nodeId, node_ids = _nodeIds } -> error "init message"
+    Init_Ok { in_reply_to = _inReplyTo } -> error "init_ok message"
+    Error   { in_reply_to = _inReplyTo, code = _code, text = _text } -> error "error message"
+    Echo    { msg_id = _msgId, echo = _echo } -> error "echo message"
+    Echo_Ok { msg_id = _msgId, in_reply_to = _inReplyTo, echo = _echo } -> error "echo_ok message"
+
 send :: Message -> IO ()
 send responseMessage =
   do 
-    log' ("Transmited: " ++ response)
     putStrLn response
+    log' ("Sent: " ++ response)
   where
     response = encodeMessage responseMessage
 
@@ -98,7 +109,7 @@ log' :: String -> IO ()
 log' str = hPutStrLn stderr str
 
 eitherDecodeMessage :: String -> Either String Message
-eitherDecodeMessage = eitherDecode  . TL.encodeUtf8 .TL.pack
+eitherDecodeMessage = Json.eitherDecode  . TL.encodeUtf8 .TL.pack
 
 encodeMessage :: Message -> String
-encodeMessage = TL.unpack . TL.decodeUtf8 . encode
+encodeMessage = TL.unpack . TL.decodeUtf8 . Json.encode
