@@ -1,5 +1,11 @@
 {-# LANGUAGE DeriveGeneric #-}
-module MaelstromServer (Message(..), Body(..), NodeData(..)) where
+module MaelstromServer (
+    Message(..)
+  , Body(..)
+  , Context
+  , NodeData(..)
+  , Action
+  , createHandler ) where
 
 import State
 
@@ -44,4 +50,10 @@ data NodeData = NodeData {
   nodeIds :: [Int]
 }
 
-
+createHandler :: (NodeData -> Message -> Message) -> (Message -> Action Context Message)
+createHandler f =
+  \ message -> 
+    Action (\ context ->
+      case context of
+        NotInitialized -> error "not initialized"
+        Initialized nodeData -> State { state = context, content = f nodeData message } )
