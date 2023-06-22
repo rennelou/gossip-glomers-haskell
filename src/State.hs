@@ -1,27 +1,27 @@
-module State (State(..), Action(..), run) where
+module State (Context(..), State(..), run) where
 
 import Control.Monad(liftM, ap)
 
-data State a r = State { state :: a, content :: r }
+data Context a r = Context { context :: a, content :: r }
 
-newtype Action a r = Action (a -> State a r)
+newtype State a r = State (a -> Context a r)
 
-run :: Action a r -> a -> State a r
-run (Action f) state = f state
+run :: State a r -> a -> Context a r
+run (State f) context = f context
 
-instance Functor (Action a) where
+instance Functor (State a) where
     fmap = liftM
 
-instance Applicative (Action a) where
+instance Applicative (State a) where
     pure =
-        \ content -> Action (\ state -> State { state = state, content = content })
+        \ content -> State (\ context -> Context { context = context, content = content })
 
     (<*>) = ap
 
-instance Monad (Action a) where
+instance Monad (State a) where
     return = pure
         
-    action >>= f = 
-        Action (\ state ->
-            let State { state = state', content = content'} = run action state
-            in run (f content') state' )
+    state >>= f =
+        State (\ context ->
+            let Context { context = context', content = content'} = run state context
+            in run (f content') context' )
