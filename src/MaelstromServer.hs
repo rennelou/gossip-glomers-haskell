@@ -3,7 +3,9 @@ module MaelstromServer (
     MaelstromMessage(..)
   , Body(..)
   , NodeData(..)
-  , runMaelstrom ) where
+  , MaelstromContext(NotInitialized)
+  , runMaelstrom
+  , wrapperHandler ) where
 
 import State
 
@@ -11,6 +13,7 @@ import System.IO (hPutStrLn, hFlush, stdout, stderr)
 import Data.Text
 import qualified Data.Aeson              as Json
 import GHC.Generics
+import Control.Monad.Except
 import qualified Data.Char               as C
 import qualified Data.Text.Lazy          as TL
 import qualified Data.Text.Lazy.Encoding as TL
@@ -26,41 +29,34 @@ data NodeData = NodeData {
 }
 
 type ClientHandler = NodeData -> MaelstromMessage -> MaelstromMessage
-type MaelstromHandler = MaelstromMessage -> State MaelstromContext (Either String MaelstromMessage)
+type MaelstromHandler = MaelstromMessage -> ExceptT String (State MaelstromContext) MaelstromMessage
 
-runMaelstrom :: ClientHandler -> IO ()
-runMaelstrom clientHandler =
+runMaelstrom :: MaelstromHandler -> MaelstromContext -> IO ()
+runMaelstrom maelstromHandler context = 
   do
-    _ <- loop (wrapperHandler clientHandler) (NotInitialized)
-    return ()
-
-loop :: MaelstromHandler -> MaelstromContext -> IO (MaelstromContext)
-loop maelstromHandler context = 
-  do
-    line <- getLine
-    log' ("Received: " ++ line)
+    (_, newContext) <- runStateT (exec maelstromHandler) context
+    runMaelstrom maelstromHandler newContext
     
-    case eitherDecodeMessage line of 
-      Left e -> 
-        do
-          log' e
-          loop maelstromHandler context
-      Right message -> 
-        let (newContext, eitherMessage) = run (maelstromHandler message) context
-        in
-          case eitherMessage of
-            Left e ->
-              do
-                log' e
-                loop maelstromHandler newContext
-            Right responseMessage ->
-              do
-                send responseMessage
-                loop maelstromHandler newContext
+exec :: MaelstromHandler -> StateT MaelstromContext IO ()
+exec maelstromHandler =
+  do
+    line <- lift getLine
+    lift $ log' ("Received: " ++ line)
+    
+    context <- getT
+
+    let action = runExceptT $ maelstromHandler =<< (liftEither $ eitherDecodeMessage line)
+    let (eitherMessage, newContext) = run action context
+
+    putT newContext
+
+    case eitherMessage of
+      Left e -> lift $ log' e
+      Right responseMessage -> lift $ send responseMessage
 
 wrapperHandler :: ClientHandler -> MaelstromHandler
 wrapperHandler clientHandler message =
-  do
+  ExceptT $ do
     maelstromContext <- get ()
     case maelstromContext of
       NotInitialized ->
@@ -68,22 +64,22 @@ wrapperHandler clientHandler message =
         case body message of
           Init _msgId _nodeId _nodeIds ->
             do
-              set (Initialized NodeData { nodeId = _nodeId, nodeIds = _nodeIds })
-              return (Right $ initOkMsg message _msgId)
+              set $ Initialized NodeData { nodeId = _nodeId, nodeIds = _nodeIds }
+              return $ return $ initOkMsg message _msgId
 
           Init_Ok _ ->
-            return (Left "Received an init_ok message")
+            return $ throwError "Received an init_ok message"
           
           Error _ _ _ ->
-            return (Left "Received an error message")
+            return $ throwError "Received an error message"
           
           Echo _msgId _ ->
-            return (Right $ notInitializedErrorMsg message _msgId)
+            return $ return $ notInitializedErrorMsg message _msgId
           
           Echo_Ok _ _ _ ->
-            return (Left "Received an echo_ok message")
+            return $ throwError "Received an echo_ok message"
 
-      Initialized nodeData -> return (Right $ clientHandler nodeData message)
+      Initialized nodeData -> return $ return $ clientHandler nodeData message
   
 initOkMsg :: MaelstromMessage -> Int -> MaelstromMessage
 initOkMsg message msgIdMsg =

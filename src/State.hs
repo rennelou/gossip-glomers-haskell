@@ -1,33 +1,69 @@
-module State (State, get, set, run) where
+module State (State, get, set, run, StateT(..), getT, putT) where
 
 import Control.Monad(liftM, ap)
+import Control.Monad.Trans.Class
 
-type Context a r = (a, r)
+type Context s r = (r, s)
 
-newtype State a r = State (a -> Context a r)
+-------------- Monad State -----------------------------------
 
-run :: State a r -> a -> Context a r
+newtype State s r = State (s -> Context s r)
+
+run :: State s r -> s -> Context s r
 run (State f) context = f context
 
-get :: () -> State a a
+get :: () -> State s s
 get () = State (\ value -> (value, value) )
 
-set :: a -> State a ()
-set value = State (\ _ -> (value, ()) )
+set :: s -> State s ()
+set value = State (\ _ -> ((), value) )
 
-instance Functor (State a) where
+instance Functor (State s) where
     fmap = liftM
 
-instance Applicative (State a) where
-    pure =
-        \ content -> State (\ context -> (context, content) )
+instance Applicative (State s) where
+    pure content = State (\ context -> (content, context) )
 
     (<*>) = ap
 
-instance Monad (State a) where
+instance Monad (State s) where
     return = pure
         
     state >>= f =
         State (\ context ->
-            let (context', content') = run state context
+            let (content', context') = run state context
             in run (f content') context' )
+
+----------------------------------------------------------------
+
+-------------------- Monad Transform State ---------------------
+
+newtype StateT s m r = StateT { runStateT :: s -> m (r, s) }
+
+instance (Monad m, Functor m) => Functor (StateT s m) where
+    fmap = liftM
+
+instance (Monad m, Functor m) => Applicative (StateT s m) where
+    pure content = StateT $ \ context -> pure (content, context)
+
+    (<*>) = ap
+
+instance (Monad m, Functor m) => Monad (StateT s m) where
+    return = pure
+
+    StateT scontent >>= f = StateT $ \context -> do
+        (content, context') <- scontent context
+        runStateT (f content) context'
+
+instance MonadTrans (StateT s) where
+  lift ma = StateT $ \s -> do
+    a <- ma
+    return (a, s)
+
+getT :: (Monad m) => StateT s m s
+getT = StateT $ \s -> return (s, s)
+
+putT :: (Monad m) => s -> StateT s m ()
+putT s = StateT $ \_ -> return ((), s)
+
+----------------------------------------------------------------
