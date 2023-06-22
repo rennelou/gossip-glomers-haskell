@@ -45,7 +45,7 @@ instance Json.ToJSON Body where
 instance Json.FromJSON Message
 instance Json.ToJSON Message
 
-data Context = NotInitialized | Initialized NodeData
+data MaelstromContext = NotInitialized | Initialized NodeData
 
 data NodeData = NodeData {
   nodeId  :: Int,
@@ -60,7 +60,7 @@ runMaelstrom clientHandler =
   where
     handler = createHandler clientHandler
 
-loop :: (Message -> Action Context Message) -> Context -> IO (Context)
+loop :: (Message -> State MaelstromContext Message) -> MaelstromContext -> IO (MaelstromContext)
 loop handler context = 
   do
     line <- getLine
@@ -72,23 +72,23 @@ loop handler context =
           log' e
           loop handler context
       Right message -> 
-        let State { 
-            state = newContext
+        let Context { 
+            context = newContext
           , content = responseMessage 
           } = run (handler message) context
         in do
           send responseMessage
           loop handler newContext
 
-createHandler :: (NodeData -> Message -> Message) -> (Message -> Action Context Message)
+createHandler :: (NodeData -> Message -> Message) -> (Message -> State MaelstromContext Message)
 createHandler f = \ message -> 
-  Action (\ context ->
+  State (\ context ->
     case context of
       NotInitialized -> initialize message
-      Initialized nodeData -> State { state = context, content = f nodeData message }
+      Initialized nodeData -> Context { context = context, content = f nodeData message }
   )
 
-initialize :: Message -> State Context Message
+initialize :: Message -> Context MaelstromContext Message
 initialize message =
   case body message of
     Init    { msg_id = _msgId, node_id = _nodeId, node_ids = _nodeIds } -> error "init message"
