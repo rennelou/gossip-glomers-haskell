@@ -137,6 +137,6 @@ test-suite gossip-glomers-haskell-test
         HTF,
         gossip-glomers-haskell
 
-    other-modules: ParseMessage
+    other-modules: ParseMaelstromMessage
 
     Build-tool-depends: HTF:htfpp
