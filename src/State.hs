@@ -1,4 +1,12 @@
-module State (State, get, set, run, StateT(..), getT, putT) where
+module State (
+      State
+    , get
+    , put
+    , run
+    , StateT(..)
+    , getT
+    , putT
+    , liftState ) where
 
 import Control.Monad(liftM, ap)
 import Control.Monad.Trans.Class
@@ -12,17 +20,17 @@ newtype State s r = State (s -> Context s r)
 run :: State s r -> s -> Context s r
 run (State f) context = f context
 
-get :: () -> State s s
-get () = State (\ value -> (value, value) )
+get :: State s s
+get = State (\context -> (context, context) )
 
-set :: s -> State s ()
-set value = State (\ _ -> ((), value) )
+put :: s -> State s ()
+put value = State (\_ -> ((), value) )
 
 instance Functor (State s) where
     fmap = liftM
 
 instance Applicative (State s) where
-    pure content = State (\ context -> (content, context) )
+    pure content = State (\context -> (content, context) )
 
     (<*>) = ap
 
@@ -30,7 +38,7 @@ instance Monad (State s) where
     return = pure
         
     state >>= f =
-        State (\ context ->
+        State (\context ->
             let (content', context') = run state context
             in run (f content') context' )
 
@@ -44,26 +52,31 @@ instance (Monad m, Functor m) => Functor (StateT s m) where
     fmap = liftM
 
 instance (Monad m, Functor m) => Applicative (StateT s m) where
-    pure content = StateT $ \ context -> pure (content, context)
+    pure content = StateT $ \context -> pure (content, context)
 
     (<*>) = ap
 
 instance (Monad m, Functor m) => Monad (StateT s m) where
     return = pure
 
-    StateT scontent >>= f = StateT $ \context -> do
-        (content, context') <- scontent context
-        runStateT (f content) context'
+    StateT scontent >>= f = 
+        StateT $ \context -> do
+          (content, context') <- scontent context
+          runStateT (f content) context'
 
 instance MonadTrans (StateT s) where
-  lift ma = StateT $ \s -> do
-    a <- ma
-    return (a, s)
+  lift ma =
+    StateT $ \context -> do
+      a <- ma
+      return (a, context)
 
 getT :: (Monad m) => StateT s m s
-getT = StateT $ \s -> return (s, s)
+getT = StateT $ \context -> return (context, context)
 
 putT :: (Monad m) => s -> StateT s m ()
-putT s = StateT $ \_ -> return ((), s)
+putT value = StateT $ \_ -> return ((), value)
+
+liftState :: (Monad m) => State s r -> StateT s m r
+liftState scontent = StateT $ \context -> return (run scontent context)
 
 ----------------------------------------------------------------

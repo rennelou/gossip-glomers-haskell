@@ -5,7 +5,7 @@ module MaelstromServer (
   , NodeData(..)
   , MaelstromContext(NotInitialized)
   , runMaelstrom
-  , wrapperHandler ) where
+  , createMaelstromServer ) where
 
 import State
 
@@ -31,40 +31,40 @@ data NodeData = NodeData {
 type ClientHandler = NodeData -> MaelstromMessage -> MaelstromMessage
 type MaelstromHandler = MaelstromMessage -> ExceptT String (State MaelstromContext) MaelstromMessage
 
-runMaelstrom :: MaelstromHandler -> MaelstromContext -> IO ()
-runMaelstrom maelstromHandler context = 
+runMaelstrom :: StateT MaelstromContext IO () -> MaelstromContext -> IO ()
+runMaelstrom maelstromServer context = 
   do
-    (_, newContext) <- runStateT (exec maelstromHandler) context
-    runMaelstrom maelstromHandler newContext
+    (_, newContext) <- runStateT maelstromServer context
+    runMaelstrom maelstromServer newContext
     
-exec :: MaelstromHandler -> StateT MaelstromContext IO ()
-exec maelstromHandler =
+createMaelstromServer :: ClientHandler -> StateT MaelstromContext IO ()
+createMaelstromServer clientHandler =
   do
+    let maelstromHandler = wrapperClientHandler clientHandler
+
     line <- lift getLine
-    lift $ log' ("Received: " ++ line)
+    responseOrError <-
+        liftState 
+      $ runExceptT
+      $ maelstromHandler =<< (liftEither $ eitherDecodeMessage line)
     
-    context <- getT
+    lift $ log' ("Received: " ++ line)
 
-    let action = runExceptT $ maelstromHandler =<< (liftEither $ eitherDecodeMessage line)
-    let (eitherMessage, newContext) = run action context
-
-    putT newContext
-
-    case eitherMessage of
+    case responseOrError of
       Left e -> lift $ log' e
       Right responseMessage -> lift $ send responseMessage
 
-wrapperHandler :: ClientHandler -> MaelstromHandler
-wrapperHandler clientHandler message =
+wrapperClientHandler :: ClientHandler -> MaelstromHandler
+wrapperClientHandler clientHandler message =
   ExceptT $ do
-    maelstromContext <- get ()
+    maelstromContext <- get
     case maelstromContext of
       NotInitialized ->
         
         case body message of
           Init _msgId _nodeId _nodeIds ->
             do
-              set $ Initialized NodeData { nodeId = _nodeId, nodeIds = _nodeIds }
+              put $ Initialized NodeData { nodeId = _nodeId, nodeIds = _nodeIds }
               return $ return $ initOkMsg message _msgId
 
           Init_Ok _ ->
@@ -80,20 +80,6 @@ wrapperHandler clientHandler message =
             return $ throwError "Received an echo_ok message"
 
       Initialized nodeData -> return $ return $ clientHandler nodeData message
-  
-initOkMsg :: MaelstromMessage -> Int -> MaelstromMessage
-initOkMsg message msgIdMsg =
-  MaelstromMessage {
-      src = dest message
-    , dest = src message
-    , body = Init_Ok { in_reply_to = msgIdMsg } }
-
-notInitializedErrorMsg :: MaelstromMessage -> Int -> MaelstromMessage
-notInitializedErrorMsg message msgId =
-  MaelstromMessage {
-      src = dest message
-    , dest = src message
-    , body = Error { in_reply_to = msgId, code = 11, text = "Not Initialized" } }
 
 send :: MaelstromMessage -> IO ()
 send responseMessage =
@@ -149,6 +135,20 @@ instance Json.ToJSON Body where
 
 instance Json.FromJSON MaelstromMessage
 instance Json.ToJSON MaelstromMessage
+
+initOkMsg :: MaelstromMessage -> Int -> MaelstromMessage
+initOkMsg message msgIdMsg =
+  MaelstromMessage {
+      src = dest message
+    , dest = src message
+    , body = Init_Ok { in_reply_to = msgIdMsg } }
+
+notInitializedErrorMsg :: MaelstromMessage -> Int -> MaelstromMessage
+notInitializedErrorMsg message msgId =
+  MaelstromMessage {
+      src = dest message
+    , dest = src message
+    , body = Error { in_reply_to = msgId, code = 11, text = "Not Initialized" } }
 
 ---------------------------------------------------------------------------------------------
 
