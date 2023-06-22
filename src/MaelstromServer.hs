@@ -48,8 +48,8 @@ instance Json.ToJSON Message
 data MaelstromContext = NotInitialized | Initialized NodeData
 
 data NodeData = NodeData {
-  nodeId  :: Int,
-  nodeIds :: [Int]
+  nodeId  :: Text,
+  nodeIds :: [Text]
 }
 
 runMaelstrom :: (NodeData -> Message -> Message) -> IO ()
@@ -72,26 +72,31 @@ loop handler context =
           log' e
           loop handler context
       Right message -> 
-        let Context { 
-            context = newContext
-          , content = responseMessage 
-          } = run (handler message) context
+        let (newContext, responseMessage) = run (handler message) context
         in do
           send responseMessage
           loop handler newContext
 
-createHandler :: (NodeData -> Message -> Message) -> (Message -> State MaelstromContext Message)
-createHandler f = \ message -> 
-  State (\ context ->
-    case context of
-      NotInitialized -> initialize message
-      Initialized nodeData -> Context { context = context, content = f nodeData message }
-  )
+createHandler :: (NodeData -> Message -> Message) -> Message -> State MaelstromContext Message
+createHandler f message =
+  do
+    maelstromContext <- get ()
+    case maelstromContext of
+      NotInitialized       -> initialize message
+      Initialized nodeData -> return (f nodeData message)
 
-initialize :: Message -> Context MaelstromContext Message
+initialize :: Message -> State MaelstromContext Message
 initialize message =
   case body message of
-    Init    { msg_id = _msgId, node_id = _nodeId, node_ids = _nodeIds } -> error "init message"
+    Init { msg_id = _msgId, node_id = _nodeId, node_ids = _nodeIds } ->
+      do
+        set (Initialized NodeData { nodeId = _nodeId, nodeIds = _nodeIds } )
+        return (
+          Message {
+              src = dest message
+            , dest = src message
+            , body = Init_Ok { in_reply_to = _msgId } } )
+
     Init_Ok { in_reply_to = _inReplyTo } -> error "init_ok message"
     Error   { in_reply_to = _inReplyTo, code = _code, text = _text } -> error "error message"
     Echo    { msg_id = _msgId, echo = _echo } -> error "echo message"

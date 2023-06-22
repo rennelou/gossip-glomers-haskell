@@ -1,20 +1,26 @@
-module State (Context(..), State(..), run) where
+module State (State, get, set, run) where
 
 import Control.Monad(liftM, ap)
 
-data Context a r = Context { context :: a, content :: r }
+type Context a r = (a, r)
 
 newtype State a r = State (a -> Context a r)
 
 run :: State a r -> a -> Context a r
 run (State f) context = f context
 
+get :: () -> State a a
+get () = State (\ value -> (value, value) )
+
+set :: a -> State a ()
+set value = State (\ _ -> (value, ()) )
+
 instance Functor (State a) where
     fmap = liftM
 
 instance Applicative (State a) where
     pure =
-        \ content -> State (\ context -> Context { context = context, content = content })
+        \ content -> State (\ context -> (context, content) )
 
     (<*>) = ap
 
@@ -23,5 +29,5 @@ instance Monad (State a) where
         
     state >>= f =
         State (\ context ->
-            let Context { context = context', content = content'} = run state context
+            let (context', content') = run state context
             in run (f content') context' )
