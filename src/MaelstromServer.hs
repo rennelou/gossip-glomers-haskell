@@ -82,25 +82,33 @@ createHandler f message =
   do
     maelstromContext <- get ()
     case maelstromContext of
-      NotInitialized       -> initialize message
+      NotInitialized ->
+        
+        case body message of
+          Init _msgId _nodeId _nodeIds ->
+            do
+              set (Initialized NodeData { nodeId = _nodeId, nodeIds = _nodeIds })
+              return (initOkMsg (dest message) (src message) _msgId)
+          Init_Ok _     -> error "Received an init_ok message"
+          Error   _ _ _ -> error "Received an error message"
+          Echo _msgId _ -> return (notInitializedErrorMsg (dest message) (src message) _msgId)
+          Echo_Ok _ _ _ -> error "Received an echo_ok message"
+
       Initialized nodeData -> return (f nodeData message)
+  
+initOkMsg :: Text -> Text -> Int -> Message
+initOkMsg src dest msgId =
+  Message {
+      src = src
+    , dest = dest
+    , body = Init_Ok { in_reply_to = msgId } }
 
-initialize :: Message -> State MaelstromContext Message
-initialize message =
-  case body message of
-    Init { msg_id = _msgId, node_id = _nodeId, node_ids = _nodeIds } ->
-      do
-        set (Initialized NodeData { nodeId = _nodeId, nodeIds = _nodeIds } )
-        return (
-          Message {
-              src = dest message
-            , dest = src message
-            , body = Init_Ok { in_reply_to = _msgId } } )
-
-    Init_Ok { in_reply_to = _inReplyTo } -> error "init_ok message"
-    Error   { in_reply_to = _inReplyTo, code = _code, text = _text } -> error "error message"
-    Echo    { msg_id = _msgId, echo = _echo } -> error "echo message"
-    Echo_Ok { msg_id = _msgId, in_reply_to = _inReplyTo, echo = _echo } -> error "echo_ok message"
+notInitializedErrorMsg :: Text -> Text -> Int -> Message
+notInitializedErrorMsg src dest msgId =
+  Message {
+      src = src
+    , dest = dest
+    , body = Error { in_reply_to = msgId, code = 11, text = "Not Initialized" } }
 
 send :: Message -> IO ()
 send responseMessage =
@@ -112,7 +120,10 @@ send responseMessage =
     response = encodeMessage responseMessage
 
 log' :: String -> IO ()
-log' str = hPutStrLn stderr str
+log' str =
+  do
+    hPutStrLn stderr str
+    hFlush stderr
 
 eitherDecodeMessage :: String -> Either String Message
 eitherDecodeMessage = Json.eitherDecode  . TL.encodeUtf8 .TL.pack
