@@ -7,7 +7,7 @@ module MaelstromServer (
 
 import State
 
-import System.IO (hPutStrLn, stderr)
+import System.IO (hPutStrLn, hFlush, stdout, stderr)
 import Data.Text
 import qualified Data.Aeson              as Json
 import GHC.Generics
@@ -106,6 +106,7 @@ send :: Message -> IO ()
 send responseMessage =
   do 
     putStrLn response
+    hFlush stdout
     log' ("Sent: " ++ response)
   where
     response = encodeMessage responseMessage
