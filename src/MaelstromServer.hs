@@ -4,6 +4,8 @@ module MaelstromServer (
   , Body(..)
   , NodeData(..)
   , MaelstromContext(NotInitialized)
+  , Event(..)
+  , Response(..)
   , runMaelstrom
   , createMaelstromServer ) where
 
@@ -28,7 +30,7 @@ data NodeData = NodeData {
   nodeIds :: [Text]
 }
 
-type ClientHandler = NodeData -> MaelstromMessage -> MaelstromMessage
+type ClientHandler = NodeData -> Event -> Response
 type MaelstromHandler = MaelstromMessage -> ExceptT String (State MaelstromContext) MaelstromMessage
 
 runMaelstrom :: StateT MaelstromContext IO () -> MaelstromContext -> IO ()
@@ -43,43 +45,41 @@ createMaelstromServer clientHandler =
     let maelstromHandler = wrapperClientHandler clientHandler
 
     line <- lift getLine
-    responseOrError <-
+    responseMessageOrError <-
         liftState 
       $ runExceptT
-      $ maelstromHandler =<< (liftEither $ eitherDecodeMessage line)
+      $ maelstromHandler =<< (liftEither $ (eitherDecodeMessage line))
     
     lift $ log' ("Received: " ++ line)
 
-    case responseOrError of
+    case responseMessageOrError of
       Left e -> lift $ log' e
       Right responseMessage -> lift $ send responseMessage
 
 wrapperClientHandler :: ClientHandler -> MaelstromHandler
 wrapperClientHandler clientHandler message =
   ExceptT $ do
+    let header = getHeader message
     maelstromContext <- get
-    case maelstromContext of
-      NotInitialized ->
-        
-        case body message of
-          Init _msgId _nodeId _nodeIds ->
-            do
-              put $ Initialized NodeData { nodeId = _nodeId, nodeIds = _nodeIds }
-              return $ return $ initOkMsg message _msgId
+    
+    case parseToEvents message of
+      Left e -> return $ throwError e
 
-          Init_Ok _ ->
-            return $ throwError "Received an init_ok message"
-          
-          Error _ _ _ ->
-            return $ throwError "Received an error message"
-          
-          Echo _msgId _ ->
-            return $ return $ notInitializedErrorMsg message _msgId
-          
-          Echo_Ok _ _ _ ->
-            return $ throwError "Received an echo_ok message"
-
-      Initialized nodeData -> return $ return $ clientHandler nodeData message
+      Right event ->
+        case maelstromContext of
+          NotInitialized ->
+            
+            case event of
+              InitEvent _msgId _nodeId _nodeIds ->
+                do
+                  put $ Initialized NodeData { nodeId = _nodeId, nodeIds = _nodeIds }
+                  return $ return $ parseFromResponse header (InitOkResponse _msgId)
+              
+              EchoEvent _msgId _ ->
+                return $ return $ parseFromResponse header (ErrorReponse _msgId 11 "Not Initialized")
+    
+          Initialized nodeData -> 
+            return $ return $ parseFromResponse header (clientHandler nodeData event)
 
 send :: MaelstromMessage -> IO ()
 send responseMessage =
@@ -154,7 +154,47 @@ notInitializedErrorMsg message msgId =
 
 ------------------------- Client Events and Responses ---------------------------------------
 
--- * Insert Events, Responses and Parses Here *
+data Header = Header { srcHeader :: Text, destHeader :: Text }
+
+data Event =
+    InitEvent { msgIdEvent :: Int, nodeIdEvent :: Text, nodeIdsEvent :: [Text] }
+  | EchoEvent { msgIdEvent :: Int, echoEvent :: Text }
+
+data Response =
+    InitOkResponse { inReplyToResp :: Int }  
+  | EchoOkResponse { msgIdResp :: Int, inReplyToResp :: Int, echoResp :: Text }
+  | ErrorReponse   { inReplyToResp :: Int, codeResp :: Int, textResp :: Text }
+
+getHeader :: MaelstromMessage -> Header
+getHeader message = Header (src message) (dest message)
+
+parseToEvents :: MaelstromMessage -> Either String Event
+parseToEvents message =
+  case body message of
+    Init _msgId _nodeId _nodeIds -> Right $ InitEvent _msgId _nodeId _nodeIds
+    
+    Init_Ok _                    -> Left "Received an init_ok message"
+    
+    Error _ _ _                  -> Left "Received an error message"
+    
+    Echo _msgId _echo            -> Right $ EchoEvent _msgId _echo
+    
+    Echo_Ok _ _ _                -> Left "Received an echo_ok message"
+
+parseFromResponse :: Header -> Response -> MaelstromMessage
+parseFromResponse header reponse =
+  case reponse of
+    InitOkResponse _inReplyTo  -> 
+      MaelstromMessage source destination (Init_Ok _inReplyTo)
+    
+    EchoOkResponse _msgId _inReplyTo _echo -> 
+      MaelstromMessage source destination (Echo_Ok _msgId _inReplyTo _echo)
+    
+    ErrorReponse _inReplyTo _code _text ->
+      MaelstromMessage source destination (Error _inReplyTo _code _text)
+  where
+    source = srcHeader header
+    destination = srcHeader header
 
 ---------------------------------------------------------------------------------------------
 

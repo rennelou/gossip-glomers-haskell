@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Main where
 
 import MaelstromServer
@@ -5,5 +6,7 @@ import MaelstromServer
 main :: IO ()
 main = runMaelstrom (createMaelstromServer myHandler) NotInitialized
   
-myHandler :: NodeData -> MaelstromMessage -> MaelstromMessage
-myHandler _ = id
+myHandler :: NodeData -> Event -> Response
+myHandler _ (InitEvent _msgId _nodeId _nodeIds) = ErrorReponse _msgId 11 "Not Initialized"
+    
+myHandler _ (EchoEvent _msgId _echo) = EchoOkResponse _msgId _msgId _echo
