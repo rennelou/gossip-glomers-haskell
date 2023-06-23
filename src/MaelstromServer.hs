@@ -58,28 +58,25 @@ createMaelstromServer clientHandler =
 
 wrapperClientHandler :: ClientHandler -> MaelstromHandler
 wrapperClientHandler clientHandler message =
-  ExceptT $ do
+  do
     let header = getHeader message
-    maelstromContext <- get
-    
-    case parseToEvents message of
-      Left e -> return $ throwError e
+    event <- liftEither $ parseToEvents message
+    maelstromContext <- lift get
 
-      Right event ->
-        case maelstromContext of
-          NotInitialized ->
-            
-            case event of
-              InitEvent _msgId _nodeId _nodeIds ->
-                do
-                  put $ Initialized NodeData { nodeId = _nodeId, nodeIds = _nodeIds }
-                  return $ return $ parseFromResponse header (InitOkResponse _msgId)
-              
-              EchoEvent _msgId _ ->
-                return $ return $ parseFromResponse header (ErrorReponse _msgId 11 "Not Initialized")
-    
-          Initialized nodeData -> 
-            return $ return $ parseFromResponse header (clientHandler nodeData event)
+    case maelstromContext of
+      NotInitialized ->
+        
+        case event of
+          InitEvent _msgId _nodeId _nodeIds ->
+            do
+              lift $ put $ Initialized NodeData { nodeId = _nodeId, nodeIds = _nodeIds }
+              return $ parseFromResponse header (InitOkResponse _msgId)
+          
+          EchoEvent _msgId _ ->
+            return $ parseFromResponse header (ErrorReponse _msgId 11 "Not Initialized")
+
+      Initialized nodeData -> 
+        return $ parseFromResponse header (clientHandler nodeData event)
 
 send :: MaelstromMessage -> IO ()
 send responseMessage =
@@ -136,20 +133,6 @@ instance Json.ToJSON Body where
 instance Json.FromJSON MaelstromMessage
 instance Json.ToJSON MaelstromMessage
 
-initOkMsg :: MaelstromMessage -> Int -> MaelstromMessage
-initOkMsg message msgIdMsg =
-  MaelstromMessage {
-      src = dest message
-    , dest = src message
-    , body = Init_Ok { in_reply_to = msgIdMsg } }
-
-notInitializedErrorMsg :: MaelstromMessage -> Int -> MaelstromMessage
-notInitializedErrorMsg message msgId =
-  MaelstromMessage {
-      src = dest message
-    , dest = src message
-    , body = Error { in_reply_to = msgId, code = 11, text = "Not Initialized" } }
-
 ---------------------------------------------------------------------------------------------
 
 ------------------------- Client Events and Responses ---------------------------------------
@@ -193,7 +176,7 @@ parseFromResponse header reponse =
     ErrorReponse _inReplyTo _code _text ->
       MaelstromMessage source destination (Error _inReplyTo _code _text)
   where
-    source = srcHeader header
+    source = destHeader header
     destination = srcHeader header
 
 ---------------------------------------------------------------------------------------------
