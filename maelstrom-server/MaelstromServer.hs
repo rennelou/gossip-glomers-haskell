@@ -4,10 +4,12 @@ module MaelstromServer (
   , Body(..)
   , NodeData(..)
   , MaelstromContext(NotInitialized)
+  , Header(..)
   , Event(..)
   , Response(..)
   , runMaelstrom
-  , createMaelstromServer ) where
+  , createMaelstromServer
+  , getMsgId ) where
 
 import State
 
@@ -30,7 +32,7 @@ data NodeData = NodeData {
   nodeIds :: [Text]
 }
 
-type ClientHandler = NodeData -> Event -> Response
+type ClientHandler = NodeData -> Header -> Event -> Response
 type MaelstromHandler = MaelstromMessage -> ExceptState MaelstromContext MaelstromMessage
 
 runMaelstrom :: MaelstromHandler -> MaelstromContext -> IO ()
@@ -67,11 +69,11 @@ createMaelstromServer clientHandler message =
               lift $ put $ Initialized NodeData { nodeId = _nodeId, nodeIds = _nodeIds }
               return $ parseFromResponse header (InitOkResponse _msgId)
           
-          EchoEvent _msgId _ ->
-            return $ parseFromResponse header (ErrorReponse _msgId 11 "Not Initialized")
+          _ ->
+            return $ parseFromResponse header (ErrorReponse (getMsgId event) 11 "Not Initialized")
 
       Initialized nodeData -> 
-        return $ parseFromResponse header (clientHandler nodeData event)
+        return $ parseFromResponse header (clientHandler nodeData header event)
 
 send :: MaelstromMessage -> IO ()
 send responseMessage =
@@ -105,11 +107,13 @@ data MaelstromMessage = MaelstromMessage {
 } deriving (Generic, Show, Eq)
 
 data Body =
-    Init    { msg_id :: Int, node_id :: Text, node_ids :: [Text] }
-  | Init_Ok { in_reply_to :: Int }
-  | Error   { in_reply_to :: Int, code :: Int, text :: Text }
-  | Echo    { msg_id :: Int, echo :: Text }
-  | Echo_Ok { msg_id :: Int, in_reply_to :: Int, echo :: Text }
+    Init        { msg_id :: Int, node_id :: Text, node_ids :: [Text] }
+  | Init_Ok     { in_reply_to :: Int }
+  | Error       { in_reply_to :: Int, code :: Int, text :: Text }
+  | Echo        { msg_id :: Int, echo :: Text }
+  | Echo_Ok     { msg_id :: Int, in_reply_to :: Int, echo :: Text }
+  | Generate    { msg_id :: Int }
+  | Generate_Ok { msg_id :: Int, in_reply_to :: Int, id :: Text }
   deriving (Generic, Show, Eq)
 
 bodyJSONOptions :: Json.Options
@@ -135,16 +139,27 @@ instance Json.ToJSON MaelstromMessage
 data Header = Header { srcHeader :: Text, destHeader :: Text }
 
 data Event =
-    InitEvent { msgIdEvent :: Int, nodeIdEvent :: Text, nodeIdsEvent :: [Text] }
-  | EchoEvent { msgIdEvent :: Int, echoEvent :: Text }
+    InitEvent     { msgIdEvent :: Int, nodeIdEvent :: Text, nodeIdsEvent :: [Text] }
+  | EchoEvent     { msgIdEvent :: Int, echoEvent :: Text }
+  | GenerateEvent { msgIdEvent :: Int }
 
 data Response =
-    InitOkResponse { inReplyToResp :: Int }  
-  | EchoOkResponse { msgIdResp :: Int, inReplyToResp :: Int, echoResp :: Text }
-  | ErrorReponse   { inReplyToResp :: Int, codeResp :: Int, textResp :: Text }
+    InitOkResponse     { inReplyToResp :: Int }  
+  | EchoOkResponse     { msgIdResp :: Int, inReplyToResp :: Int, echoResp :: Text }
+  | GenerateOkResponse { msgIdResp :: Int, inReplyToResp :: Int, idResp :: Text }
+  | ErrorReponse       { inReplyToResp :: Int, codeResp :: Int, textResp :: Text }
 
 getHeader :: MaelstromMessage -> Header
 getHeader message = Header (src message) (dest message)
+
+getMsgId :: Event -> Int
+getMsgId event =
+  case event of
+    InitEvent _msgId _ _ -> _msgId
+          
+    EchoEvent _msgId _   -> _msgId
+
+    GenerateEvent _msgId -> _msgId
 
 parseToEvents :: MaelstromMessage -> Either String Event
 parseToEvents message =
@@ -159,6 +174,10 @@ parseToEvents message =
     
     Echo_Ok _ _ _                -> Left "Received an echo_ok message"
 
+    Generate _msgId              -> Right $ GenerateEvent _msgId
+    
+    Generate_Ok _ _ _            -> Left "Received an generate_ok message"
+
 parseFromResponse :: Header -> Response -> MaelstromMessage
 parseFromResponse header reponse =
   case reponse of
@@ -167,6 +186,9 @@ parseFromResponse header reponse =
     
     EchoOkResponse _msgId _inReplyTo _echo -> 
       MaelstromMessage source destination (Echo_Ok _msgId _inReplyTo _echo)
+    
+    GenerateOkResponse _msgId _inReplyTo _id ->
+      MaelstromMessage source destination (Generate_Ok _msgId _inReplyTo _id)
     
     ErrorReponse _inReplyTo _code _text ->
       MaelstromMessage source destination (Error _inReplyTo _code _text)
