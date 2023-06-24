@@ -54,7 +54,7 @@ extra-doc-files:    CHANGELOG.md
 common warnings
     ghc-options: -Wall -O3
 
-library
+library maelstrom-server
     -- Import common warning flags.
     import:           warnings
 
@@ -77,12 +77,12 @@ library
                       mtl
 
     -- Directories containing source files.
-    hs-source-dirs:   src
+    hs-source-dirs:   maelstrom-server
 
     -- Base language which the package is written in.
     default-language: GHC2021
 
-executable gossip-glomers-haskell
+executable echo
     -- Import common warning flags.
     import:           warnings
 
@@ -100,10 +100,10 @@ executable gossip-glomers-haskell
         base ^>=4.16.3.0,
         text,
         aeson,
-        gossip-glomers-haskell
+        maelstrom-server
 
     -- Directories containing source files.
-    hs-source-dirs:   app
+    hs-source-dirs:   echo
 
     -- Base language which the package is written in.
     default-language: GHC2021
@@ -137,7 +137,7 @@ test-suite gossip-glomers-haskell-test
         bytestring,
         aeson,
         HTF,
-        gossip-glomers-haskell
+        maelstrom-server
 
     other-modules: ParseMaelstromMessage
 
