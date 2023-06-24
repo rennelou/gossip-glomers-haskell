@@ -3,17 +3,14 @@ module State (
     , get
     , put
     , run
-    , StateT(..)
-    , getT
-    , putT
-    , liftState ) where
+    , ExceptState
+    , runExceptState ) where
 
-import Control.Monad(liftM, ap)
-import Control.Monad.Trans.Class
+import Control.Monad.Except
 
 type Context s r = (r, s)
 
--------------- Monad State -----------------------------------
+------------------- Monad State -------------------------------
 
 newtype State s r = State (s -> Context s r)
 
@@ -44,39 +41,11 @@ instance Monad (State s) where
 
 ----------------------------------------------------------------
 
--------------------- Monad Transform State ---------------------
+-------------------- ExceptTState ---------------------
 
-newtype StateT s m r = StateT { runStateT :: s -> m (r, s) }
+type ExceptState s r = ExceptT String (State s) r
 
-instance (Monad m, Functor m) => Functor (StateT s m) where
-    fmap = liftM
-
-instance (Monad m, Functor m) => Applicative (StateT s m) where
-    pure content = StateT $ \context -> pure (content, context)
-
-    (<*>) = ap
-
-instance (Monad m, Functor m) => Monad (StateT s m) where
-    return = pure
-
-    StateT scontent >>= f = 
-        StateT $ \context -> do
-          (content, context') <- scontent context
-          runStateT (f content) context'
-
-instance MonadTrans (StateT s) where
-  lift ma =
-    StateT $ \context -> do
-      a <- ma
-      return (a, context)
-
-getT :: (Monad m) => StateT s m s
-getT = StateT $ \context -> return (context, context)
-
-putT :: (Monad m) => s -> StateT s m ()
-putT value = StateT $ \_ -> return ((), value)
-
-liftState :: (Monad m) => State s r -> StateT s m r
-liftState scontent = StateT $ \context -> return (run scontent context)
+runExceptState :: ExceptT String (State s) r -> s -> (Either String r, s)
+runExceptState execptTState = run (runExceptT execptTState)
 
 ----------------------------------------------------------------

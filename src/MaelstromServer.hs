@@ -31,33 +31,28 @@ data NodeData = NodeData {
 }
 
 type ClientHandler = NodeData -> Event -> Response
-type MaelstromHandler = MaelstromMessage -> ExceptT String (State MaelstromContext) MaelstromMessage
+type MaelstromHandler = MaelstromMessage -> ExceptState MaelstromContext MaelstromMessage
 
-runMaelstrom :: StateT MaelstromContext IO () -> MaelstromContext -> IO ()
-runMaelstrom maelstromServer context = 
+runMaelstrom :: MaelstromHandler -> MaelstromContext -> IO ()
+runMaelstrom maelstromHandler context = 
   do
-    (_, newContext) <- runStateT maelstromServer context
-    runMaelstrom maelstromServer newContext
+    line <- getLine
     
-createMaelstromServer :: ClientHandler -> StateT MaelstromContext IO ()
-createMaelstromServer clientHandler =
-  do
-    let maelstromHandler = wrapperClientHandler clientHandler
+    log' ("Received: " ++ line)
 
-    line <- lift getLine
-    responseMessageOrError <-
-        liftState 
-      $ runExceptT
-      $ maelstromHandler =<< (liftEither $ (eitherDecodeMessage line))
-    
-    lift $ log' ("Received: " ++ line)
+    let (responseOrError, newContext) = runExceptState 
+                                          (     maelstromHandler 
+                                            =<< (liftEither $ eitherDecodeMessage line) )
+                                          context
 
-    case responseMessageOrError of
-      Left e -> lift $ log' e
-      Right responseMessage -> lift $ send responseMessage
+    case responseOrError of
+      Left e -> do log' e
+      Right responseMessage -> do send responseMessage
 
-wrapperClientHandler :: ClientHandler -> MaelstromHandler
-wrapperClientHandler clientHandler message =
+    runMaelstrom maelstromHandler newContext
+
+createMaelstromServer :: ClientHandler -> MaelstromHandler
+createMaelstromServer clientHandler message =
   do
     let header = getHeader message
     event <- liftEither $ parseToEvents message
@@ -94,7 +89,7 @@ log' str =
     hFlush stderr
 
 eitherDecodeMessage :: String -> Either String MaelstromMessage
-eitherDecodeMessage = Json.eitherDecode  . TL.encodeUtf8 .TL.pack
+eitherDecodeMessage = Json.eitherDecode . TL.encodeUtf8 . TL.pack
 
 encodeMessage :: MaelstromMessage -> String
 encodeMessage = TL.unpack . TL.decodeUtf8 . Json.encode
